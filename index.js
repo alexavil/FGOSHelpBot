@@ -66,6 +66,7 @@ bot.on("callback_query", (callback) => {
         const completion = await openai.chat.completions.create({
             model: "deepseek/deepseek-r1:free",
             messages: [{ role: "user", content: msg.text }],
+            provider: {sort: 'throughput'}
           });
           console.log(completion.choices[0].message);
           return bot.sendMessage(chatId, completion.choices[0].message.content, {
@@ -75,7 +76,7 @@ bot.on("callback_query", (callback) => {
       break;
     }
     case "poster": {
-      return bot.sendMessage(chatId, `В разработке!`);
+      return bot.sendDocument(chatId, "./assets/poster.png");
     }
   }
 });
