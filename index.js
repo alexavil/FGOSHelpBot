@@ -35,14 +35,16 @@ bot.onText(/\/start/, (msg, match) => {
           ],
           [
             {
-              text: "Перейти на сайт ФГОС",
-              callback_data: "website",
+              text: "Получить плакат",
+              callback_data: "poster",
             },
           ],
           [
             {
-              text: "Получить плакат",
-              callback_data: "poster",
+              text: "Перейти на сайт ФГОС",
+              web_app: {
+                url: "https://fgos.ru/",
+              },
             },
           ],
         ],
@@ -51,19 +53,31 @@ bot.onText(/\/start/, (msg, match) => {
   );
 });
 
-bot.onText(/\/faq/, (msg, match) => {
-  const chatId = msg.chat.id;
-  bot.sendMessage(chatId, `В разработке!`);
-});
-
-bot.onText(/\/askai/, async (msg, match) => {
-  const chatId = msg.chat.id;
-  const completion = await openai.chat.completions.create({
-    model: "deepseek/deepseek-r1:free",
-    messages: [{ role: "user", content: "What is the meaning of life?" }],
-  });
-  console.log(completion.choices[0].message);
-  bot.sendMessage(chatId, completion.choices[0].message.content);
+bot.on("callback_query", (callback) => {
+  const chatId = callback.message.chat.id;
+  switch (callback.data) {
+    case "faq": {
+      return bot.sendMessage(chatId, `В разработке!`);
+    }
+    case "ai": {
+      bot.sendMessage(chatId, `Напишите свой вопрос:`);
+      bot.once("message", async (msg) => {
+        bot.sendChatAction(chatId, "typing");
+        const completion = await openai.chat.completions.create({
+            model: "deepseek/deepseek-r1:free",
+            messages: [{ role: "user", content: msg.text }],
+          });
+          console.log(completion.choices[0].message);
+          return bot.sendMessage(chatId, completion.choices[0].message.content, {
+            parse_mode: "Markdown"
+          });
+      })
+      break;
+    }
+    case "poster": {
+      return bot.sendMessage(chatId, `В разработке!`);
+    }
+  }
 });
 
 bot.on("polling_error", (err) => {
