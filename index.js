@@ -108,7 +108,7 @@ bot.on("callback_query", (callback) => {
         console.log("Activating AI...")
         const completion = await openai.chat.completions.create({
           model: "deepseek/deepseek-r1:free",
-          messages: [{ role: "user", content: msg.text }],
+          messages: [{role: "system", content: "Если вопрос не касается ФГОС или задан не на русском языке, вежливо откажи пользователю."}, { role: "user", content: msg.text }],
           provider: { sort: "throughput" },
         });
         console.log(completion.choices[0].message);
