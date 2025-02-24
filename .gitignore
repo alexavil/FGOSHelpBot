@@ -12,6 +12,7 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # Databases
 *.db
+system_prompt.txt
 
 # Runtime data
 pids

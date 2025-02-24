@@ -5,6 +5,8 @@ const OpenAI = require("openai");
 
 const sql = require("better-sqlite3");
 
+const fs = require("fs-extra");
+
 const openai = new OpenAI({
   baseURL: "https://openrouter.ai/api/v1",
   apiKey: process.env.OPENROUTER_API_KEY,
@@ -20,35 +22,73 @@ db.prepare(
   "CREATE TABLE IF NOT EXISTS faq(id INTEGER PRIMARY KEY AUTOINCREMENT, title STRING, value STRING)",
 ).run();
 
-let menu = function (chatId) {
-  bot.sendMessage(
-    chatId,
-    `Добро пожаловать!\nДанный бот создан для методического сопровождения учителей в процессе реализации федеральных государственных образовательных стандартов (ФГОС) в России.\n\nПожалуйста, выберите действие:`,
+let menu = function (mode, chatId, callbackId) {
+  switch (mode) {
+    default: {
+      return false;
+    }
+    case "post": {
+      return bot.sendMessage(chatId,
+        `Добро пожаловать!\nДанный бот создан для методического сопровождения учителей в процессе реализации федеральных государственных образовательных стандартов (ФГОС) в России.\n\nПожалуйста, выберите действие:`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "Узнать информацию о ФГОС",
+                  callback_data: "faq",
+                },
+              ],
+              [
+                {
+                  text: "Задать вопрос",
+                  callback_data: "ai",
+                },
+              ],
+              [
+                {
+                  text: "Получить плакаты",
+                  callback_data: "poster",
+                },
+              ],
+            ],
+          },
+        },
+      );
+    }
+    case "edit":
     {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            {
-              text: "Узнать информацию о ФГОС",
-              callback_data: "faq",
-            },
-          ],
-          [
-            {
-              text: "Задать вопрос",
-              callback_data: "ai",
-            },
-          ],
-          [
-            {
-              text: "Получить плакат",
-              callback_data: "poster",
-            },
-          ],
-        ],
-      },
-    },
-  );
+      return bot.editMessageText(
+        `Добро пожаловать!\nДанный бот создан для методического сопровождения учителей в процессе реализации федеральных государственных образовательных стандартов (ФГОС) в России.\n\nПожалуйста, выберите действие:`,
+        {
+          chat_id: chatId,
+          message_id: callbackId,
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "Узнать информацию о ФГОС",
+                  callback_data: "faq",
+                },
+              ],
+              [
+                {
+                  text: "Задать вопрос",
+                  callback_data: "ai",
+                },
+              ],
+              [
+                {
+                  text: "Получить плакаты",
+                  callback_data: "poster",
+                },
+              ],
+            ],
+          },
+        },
+      );
+    }
+  }
 };
 
 bot.onText(/\/start/, (msg, match) => {
@@ -65,17 +105,16 @@ bot.onText(/\/start/, (msg, match) => {
       return;
     });
   }
-  menu(chatId);
+  return menu("post", chatId);
 });
 
 bot.on("callback_query", (callback) => {
   const chatId = callback.message.chat.id;
-  bot.deleteMessage(chatId, callback.message.message_id);
   bot.answerCallbackQuery(callback.id);
   switch (callback.data) {
     case "cancel": {
       bot.removeListener("message");
-      return menu(chatId);
+      return menu("edit", chatId, callback.message.message_id);
     }
     case "faq": {
       let faq = db.prepare("SELECT * FROM faq").all();
@@ -94,7 +133,9 @@ bot.on("callback_query", (callback) => {
           callback_data: "cancel",
         },
       ]);
-      bot.sendMessage(chatId, `Что вы хотите узнать сегодня?`, {
+      bot.editMessageText(`Что вы хотите узнать сегодня?`, {
+        chat_id: chatId,
+        message_id: callback.message.message_id,
         reply_markup: {
           inline_keyboard: buttons,
         },
@@ -106,6 +147,7 @@ bot.on("callback_query", (callback) => {
         if (!question || question === undefined) {
           return false;
         } else {
+          await bot.deleteMessage(chatId, callback.message.message_id);
           await bot.sendMessage(
             chatId,
             `*${question.title}*\n\n${question.value}`,
@@ -120,16 +162,17 @@ bot.on("callback_query", (callback) => {
               parse_mode: "Markdown",
             },
           );
-          return menu(chatId);
+          return menu("post", chatId);
         }
       });
       break;
     }
     case "ai": {
-      let prompt = bot.sendMessage(
-        chatId,
+      let prompt = bot.editMessageText(
         `Задайте свой вопрос - наш помощник попробует дать на него ответ.\n⚠️ Будьте вежливы и старайтесь чётко формулировать вопрос.`,
         {
+          chat_id: chatId,
+          message_id: callback.message.message_id,
           reply_markup: {
             inline_keyboard: [
               [
@@ -156,39 +199,63 @@ bot.on("callback_query", (callback) => {
             chatId,
             "Помощник обрабатывает ваш запрос. Это может занять некоторое время. Пожалуйста, подождите...",
           );
+          let system = fs.readFileSync("system_prompt.txt");
           const completion = await openai.chat.completions.create({
-            model: "google/gemini-2.0-flash-thinking-exp:free",
+            models: ["google/gemini-2.0-flash-thinking-exp:free", "google/gemini-2.0-pro-exp-02-05:free", "deepseek/deepseek-r1:free"],
             messages: [
               {
                 role: "system",
-                content: process.env.SYSTEM_PROMPT,
+                content: system.toString(),
               },
               { role: "user", content: msg.text },
             ],
             provider: { sort: "throughput" },
           });
+          if (completion.error || completion.choices === undefined) message = "Произошла ошибка. Попробуйте задать вопрос ещё раз.";
+          else message = completion.choices[0].message.content;
           bot.deleteMessage(chatId, (await wait).message_id);
-          response = completion.choices[0].message.content;
+          response = message.replaceAll("**", "").replaceAll("*", "").replaceAll(/  +/g, ' ');;
         }
-        await bot.sendMessage(chatId, response, {
-          reply_to_message_id: msg.message_id,
-        });
-        await bot.sendMessage(
-          chatId,
-          "_Если вам понравился этот ответ, вы можете сохранить его в Избранное._",
-          {
-            parse_mode: "Markdown",
-          },
-        );
-        return menu(chatId);
+        if (response.length > 4096) {
+            let res = [];
+            while (response.length) {
+              res.push(response.substring(0, 4096));
+              response = response.substring(4096);
+            }
+            for (const r of res) {
+              await bot.sendMessage(chatId, r, {
+                reply_to_message_id: msg.message_id,
+              });
+            }
+            await bot.sendMessage(
+              chatId,
+              "_Если вам понравился этот ответ, вы можете сохранить его в Избранное._",
+              {
+                parse_mode: "Markdown",
+              },
+            );
+        } else {
+          await bot.sendMessage(chatId, response, {
+            reply_to_message_id: msg.message_id,
+          });
+          await bot.sendMessage(
+            chatId,
+            "_Если вам понравился этот ответ, вы можете сохранить его в Избранное._",
+            {
+              parse_mode: "Markdown",
+            },
+          );
+        }
+        return menu("post", chatId);
       });
       break;
     }
     case "poster": {
-      bot.sendMessage(
-        chatId,
+      bot.editMessageText(
         "Выберите формат, в котором хотите получить плакаты.",
         {
+          chat_id: chatId,
+          message_id: callback.message.message_id,
           reply_markup: {
             inline_keyboard: [
               [
@@ -212,9 +279,11 @@ bot.on("callback_query", (callback) => {
         },
       );
       bot.once("callback_query", async (format) => {
+        await bot.deleteMessage(chatId, callback.message.message_id);
         switch (format.data) {
           case "poster_pdf": {
-            await bot.sendDocument(chatId, "./assets/poster.pdf");
+            await bot.sendDocument(chatId, "./assets/Принципы ФГОС.pdf");
+            await bot.sendDocument(chatId, "./assets/Качества выпускника.pdf");
             await bot.sendMessage(
               chatId,
               "_Вы можете поделиться плакатами с другими людьми, а также сохранить их на своё устройство или в Избранное._",
@@ -222,11 +291,11 @@ bot.on("callback_query", (callback) => {
                 parse_mode: "Markdown",
               },
             );
-            return menu(chatId);
+            return menu("post", chatId);
           }
           case "poster_png": {
-            await bot.sendDocument(chatId, "./assets/poster1.png");
-            await bot.sendDocument(chatId, "./assets/poster2.png");
+            await bot.sendDocument(chatId, "./assets/Принципы ФГОС.png");
+            await bot.sendDocument(chatId, "./assets/Качества выпускника.png");
             await bot.sendMessage(
               chatId,
               "_Вы можете поделиться плакатами с другими людьми, а также сохранить их на своё устройство или в Избранное._",
@@ -234,12 +303,20 @@ bot.on("callback_query", (callback) => {
                 parse_mode: "Markdown",
               },
             );
-            return menu(chatId);
+            return menu("post", chatId);
           }
         }
       });
     }
   }
+});
+
+process.on("unhandledRejection", (error) => {
+  console.log("Error: " + error.message);
+});
+
+process.on("uncaughtException", (error) => {
+  console.log("Error: " + error.message);
 });
 
 bot.on("polling_error", (err) => {
