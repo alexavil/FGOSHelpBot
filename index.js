@@ -199,7 +199,7 @@ bot.on("callback_query", (callback) => {
             chatId,
             "Помощник обрабатывает ваш запрос. Это может занять некоторое время. Пожалуйста, подождите...",
           );
-          let system = fs.readFileSync("system_prompt.txt");
+          let system = await fs.readFile("system_prompt.txt");
           const completion = await openai.chat.completions.create({
             models: ["google/gemini-2.0-flash-thinking-exp:free", "google/gemini-2.0-pro-exp-02-05:free", "deepseek/deepseek-r1:free"],
             messages: [
@@ -210,6 +210,7 @@ bot.on("callback_query", (callback) => {
               { role: "user", content: msg.text },
             ],
             provider: { sort: "throughput" },
+            include_reasoning: true
           });
           if (completion.error || completion.choices === undefined) message = "Произошла ошибка. Попробуйте задать вопрос ещё раз.";
           else message = completion.choices[0].message.content;
