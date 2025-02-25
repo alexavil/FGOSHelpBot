@@ -112,6 +112,9 @@ bot.on("callback_query", (callback) => {
   const chatId = callback.message.chat.id;
   bot.answerCallbackQuery(callback.id);
   switch (callback.data) {
+    default: {
+      return false;
+    }
     case "cancel": {
       bot.removeListener("message");
       return menu("edit", chatId, callback.message.message_id);
@@ -133,7 +136,7 @@ bot.on("callback_query", (callback) => {
           callback_data: "cancel",
         },
       ]);
-      bot.editMessageText(`Что вы хотите узнать сегодня?`, {
+      bot.editMessageText(`Здесь вы можете узнать основную информацию о ФГОС.\nПожалуйста, выберите вопрос.`, {
         chat_id: chatId,
         message_id: callback.message.message_id,
         reply_markup: {
@@ -169,7 +172,7 @@ bot.on("callback_query", (callback) => {
     }
     case "ai": {
       let prompt = bot.editMessageText(
-        `Задайте свой вопрос - наш помощник попробует дать на него ответ.\n⚠️ Будьте вежливы и старайтесь чётко формулировать вопрос.`,
+        `Задайте свой вопрос - наш помощник попробует дать на него ответ.\n_⚠️ Будьте вежливы и старайтесь чётко формулировать вопрос. Помните о том, что ответственность за реализацию ФГОС на занятиях несёте только вы, и проверяйте информацию._`,
         {
           chat_id: chatId,
           message_id: callback.message.message_id,
@@ -212,6 +215,7 @@ bot.on("callback_query", (callback) => {
             provider: { sort: "throughput" },
             include_reasoning: true
           });
+          console.log(completion);
           if (completion.error || completion.choices === undefined) message = "Произошла ошибка. Попробуйте задать вопрос ещё раз.";
           else message = completion.choices[0].message.content;
           bot.deleteMessage(chatId, (await wait).message_id);
@@ -282,6 +286,9 @@ bot.on("callback_query", (callback) => {
       bot.once("callback_query", async (format) => {
         await bot.deleteMessage(chatId, callback.message.message_id);
         switch (format.data) {
+          default: {
+            return false;
+          }
           case "poster_pdf": {
             await bot.sendDocument(chatId, "./assets/Принципы ФГОС.pdf");
             await bot.sendDocument(chatId, "./assets/Качества выпускника.pdf");
