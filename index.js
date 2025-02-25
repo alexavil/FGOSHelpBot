@@ -192,6 +192,7 @@ bot.on("callback_query", (callback) => {
         },
       );
       bot.once("message", async (msg) => {
+        if (msg.text === "/start") return false;
         bot.deleteMessage(chatId, (await prompt).message_id);
         let faq = db.prepare("SELECT * FROM faq").all();
         let response = undefined;
