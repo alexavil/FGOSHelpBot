@@ -150,6 +150,7 @@ bot.on("callback_query", (callback) => {
         if (!question || question === undefined) {
           return false;
         } else {
+          let wait = bot.sendMessage(chatId, "Пожалуйста, подождите...")
           await bot.deleteMessage(chatId, callback.message.message_id);
           await bot.sendMessage(
             chatId,
@@ -158,6 +159,7 @@ bot.on("callback_query", (callback) => {
               parse_mode: "Markdown",
             },
           );
+          await bot.deleteMessage(chatId, (await wait).message_id);
           await bot.sendMessage(
             chatId,
             "_Если вам понравился этот ответ, вы можете сохранить его в Избранное._",
@@ -176,6 +178,7 @@ bot.on("callback_query", (callback) => {
         {
           chat_id: chatId,
           message_id: callback.message.message_id,
+          parse_mode: "Markdown",
           reply_markup: {
             inline_keyboard: [
               [
@@ -284,14 +287,16 @@ bot.on("callback_query", (callback) => {
         },
       );
       bot.once("callback_query", async (format) => {
-        await bot.deleteMessage(chatId, callback.message.message_id);
         switch (format.data) {
           default: {
             return false;
           }
           case "poster_pdf": {
+            let wait = bot.sendMessage(chatId, "Пожалуйста, подождите...")
+            await bot.deleteMessage(chatId, format.message.message_id);
             await bot.sendDocument(chatId, "./assets/Принципы ФГОС.pdf");
             await bot.sendDocument(chatId, "./assets/Качества выпускника.pdf");
+            await bot.deleteMessage(chatId, (await wait).message_id);
             await bot.sendMessage(
               chatId,
               "_Вы можете поделиться плакатами с другими людьми, а также сохранить их на своё устройство или в Избранное._",
@@ -302,8 +307,11 @@ bot.on("callback_query", (callback) => {
             return menu("post", chatId);
           }
           case "poster_png": {
+            let wait = bot.sendMessage(chatId, "Пожалуйста, подождите...")
+            await bot.deleteMessage(chatId, format.message.message_id);
             await bot.sendDocument(chatId, "./assets/Принципы ФГОС.png");
             await bot.sendDocument(chatId, "./assets/Качества выпускника.png");
+            await bot.deleteMessage(chatId, (await wait).message_id);
             await bot.sendMessage(
               chatId,
               "_Вы можете поделиться плакатами с другими людьми, а также сохранить их на своё устройство или в Избранное._",
