@@ -15,6 +15,12 @@ const openai = new OpenAI({
 const bot = new TelegramBot(process.env.TOKEN, {
   polling: true,
   onlyFirstMatch: true,
+  request: {
+    agentOptions: {
+      keepAlive: true,
+      family: 4,
+    },
+  },
 });
 
 let db = new sql("./assets/data.db");
@@ -22,13 +28,16 @@ db.prepare(
   "CREATE TABLE IF NOT EXISTS faq(id INTEGER PRIMARY KEY AUTOINCREMENT, title STRING, value STRING)",
 ).run();
 
+let isAiActive = false;
+
 let menu = function (mode, chatId, callbackId) {
   switch (mode) {
     default: {
       return false;
     }
     case "post": {
-      return bot.sendMessage(chatId,
+      return bot.sendMessage(
+        chatId,
         `Добро пожаловать!\nДанный бот создан для методического сопровождения учителей в процессе реализации федеральных государственных образовательных стандартов (ФГОС) в России.\n\nПожалуйста, выберите действие:`,
         {
           reply_markup: {
@@ -56,8 +65,7 @@ let menu = function (mode, chatId, callbackId) {
         },
       );
     }
-    case "edit":
-    {
+    case "edit": {
       return bot.editMessageText(
         `Добро пожаловать!\nДанный бот создан для методического сопровождения учителей в процессе реализации федеральных государственных образовательных стандартов (ФГОС) в России.\n\nПожалуйста, выберите действие:`,
         {
@@ -100,11 +108,6 @@ bot.onText(/\/start/, (msg, match) => {
       type: "commands",
     },
   });
-  for (let i = 0; i < 101; i++) {
-    bot.deleteMessage(msg.chat.id, msg.message_id - i).catch((err) => {
-      return;
-    });
-  }
   return menu("post", chatId);
 });
 
@@ -116,6 +119,10 @@ bot.on("callback_query", (callback) => {
       return false;
     }
     case "cancel": {
+      return menu("edit", chatId, callback.message.message_id);
+    }
+    case "ai_cancel": {
+      isAiActive = false;
       bot.removeListener("message");
       return menu("edit", chatId, callback.message.message_id);
     }
@@ -136,13 +143,16 @@ bot.on("callback_query", (callback) => {
           callback_data: "cancel",
         },
       ]);
-      bot.editMessageText(`Здесь вы можете узнать основную информацию о ФГОС.\nПожалуйста, выберите вопрос.`, {
-        chat_id: chatId,
-        message_id: callback.message.message_id,
-        reply_markup: {
-          inline_keyboard: buttons,
+      bot.editMessageText(
+        `Здесь вы можете узнать основную информацию о ФГОС.\nПожалуйста, выберите вопрос.`,
+        {
+          chat_id: chatId,
+          message_id: callback.message.message_id,
+          reply_markup: {
+            inline_keyboard: buttons,
+          },
         },
-      });
+      );
       bot.once("callback_query", async (q) => {
         let question = db
           .prepare(`SELECT * FROM faq WHERE id = '${q.data}'`)
@@ -150,8 +160,10 @@ bot.on("callback_query", (callback) => {
         if (!question || question === undefined) {
           return false;
         } else {
-          let wait = bot.sendMessage(chatId, "Пожалуйста, подождите...")
-          await bot.deleteMessage(chatId, callback.message.message_id);
+          let wait = bot.editMessageText("Пожалуйста, подождите...", {
+            chat_id: chatId,
+            message_id: callback.message.message_id,
+          });
           await bot.sendMessage(
             chatId,
             `*${question.title}*\n\n${question.value}`,
@@ -159,11 +171,11 @@ bot.on("callback_query", (callback) => {
               parse_mode: "Markdown",
             },
           );
-          await bot.deleteMessage(chatId, (await wait).message_id);
-          await bot.sendMessage(
-            chatId,
+          await bot.editMessageText(
             "_Если вам понравился этот ответ, вы можете сохранить его в Избранное._",
             {
+              chat_id: chatId,
+              message_id: callback.message.message_id,
               parse_mode: "Markdown",
             },
           );
@@ -173,90 +185,120 @@ bot.on("callback_query", (callback) => {
       break;
     }
     case "ai": {
-      let prompt = bot.editMessageText(
-        `Задайте свой вопрос - наш помощник попробует дать на него ответ.\n_⚠️ Будьте вежливы и старайтесь чётко формулировать вопрос. Помните о том, что ответственность за реализацию ФГОС на занятиях несёте только вы, и проверяйте информацию._`,
-        {
-          chat_id: chatId,
-          message_id: callback.message.message_id,
-          parse_mode: "Markdown",
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "<< Назад",
-                  callback_data: "cancel",
-                },
-              ],
-            ],
-          },
-        },
-      );
-      bot.once("message", async (msg) => {
-        if (msg.text === "/start") return false;
-        bot.deleteMessage(chatId, (await prompt).message_id);
-        let faq = db.prepare("SELECT * FROM faq").all();
-        let response = undefined;
-        if (faq.some((q) => msg.text.toLowerCase() === q.title.toLowerCase())) {
-          let question = faq.find(
-            (q) => msg.text.toLowerCase() === q.title.toLowerCase(),
-          );
-          response = question.value;
-        } else {
-          let wait = bot.sendMessage(
-            chatId,
-            "Помощник обрабатывает ваш запрос. Это может занять некоторое время. Пожалуйста, подождите...",
-          );
-          let system = await fs.readFile("system_prompt.txt");
-          const completion = await openai.chat.completions.create({
-            models: ["google/gemini-2.0-flash-thinking-exp:free", "google/gemini-2.0-pro-exp-02-05:free", "deepseek/deepseek-r1:free"],
-            messages: [
-              {
-                role: "system",
-                content: system.toString(),
-              },
-              { role: "user", content: msg.text },
-            ],
-            provider: { sort: "throughput" },
-            include_reasoning: true
-          });
-          console.log(completion);
-          if (completion.error || completion.choices === undefined) message = "Произошла ошибка. Попробуйте задать вопрос ещё раз.";
-          else message = completion.choices[0].message.content;
-          bot.deleteMessage(chatId, (await wait).message_id);
-          response = message.replaceAll("**", "").replaceAll("*", "").replaceAll(/  +/g, ' ');;
-        }
-        if (response.length > 4096) {
-            let res = [];
-            while (response.length) {
-              res.push(response.substring(0, 4096));
-              response = response.substring(4096);
-            }
-            for (const r of res) {
-              await bot.sendMessage(chatId, r, {
-                reply_to_message_id: msg.message_id,
-              });
-            }
-            await bot.sendMessage(
-              chatId,
-              "_Если вам понравился этот ответ, вы можете сохранить его в Избранное._",
-              {
-                parse_mode: "Markdown",
-              },
-            );
-        } else {
-          await bot.sendMessage(chatId, response, {
-            reply_to_message_id: msg.message_id,
-          });
-          await bot.sendMessage(
-            chatId,
-            "_Если вам понравился этот ответ, вы можете сохранить его в Избранное._",
+      switch (isAiActive) {
+        case true: {
+          return bot.editMessageText(
+            `_Вы уже можете задать вопрос. Напишите его, и наш помощник попробует дать на него ответ._`,
             {
+              chat_id: chatId,
+              message_id: callback.message.message_id,
               parse_mode: "Markdown",
             },
           );
         }
-        return menu("post", chatId);
-      });
+        case false: {
+          isAiActive = true;
+          let prompt = bot.editMessageText(
+            `Задайте свой вопрос - наш помощник попробует дать на него ответ.\n_⚠️ Будьте вежливы и старайтесь чётко формулировать вопрос. Помните о том, что ответственность за реализацию ФГОС на занятиях несёте только вы, и проверяйте информацию._`,
+            {
+              chat_id: chatId,
+              message_id: callback.message.message_id,
+              parse_mode: "Markdown",
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    {
+                      text: "<< Назад",
+                      callback_data: "ai_cancel",
+                    },
+                  ],
+                ],
+              },
+            },
+          );
+          bot.once("message", async (msg) => {
+            if (msg.text === "/start") return false;
+            let faq = db.prepare("SELECT * FROM faq").all();
+            let response = undefined;
+            if (
+              faq.some((q) => msg.text.toLowerCase() === q.title.toLowerCase())
+            ) {
+              let question = faq.find(
+                (q) => msg.text.toLowerCase() === q.title.toLowerCase(),
+              );
+              response = question.value;
+            } else {
+              await bot.editMessageText(
+                "Помощник обрабатывает ваш запрос. Это может занять некоторое время. Пожалуйста, подождите...",
+                {
+                  chat_id: chatId,
+                  message_id: (await prompt).message_id,
+                },
+              );
+              let system = await fs.readFile("system_prompt.txt");
+              const completion = await openai.chat.completions.create({
+                models: [
+                  "google/gemini-2.0-flash-thinking-exp:free",
+                  "google/gemini-2.0-pro-exp-02-05:free",
+                  "deepseek/deepseek-r1:free",
+                ],
+                messages: [
+                  {
+                    role: "system",
+                    content: system.toString(),
+                  },
+                  { role: "user", content: msg.text },
+                ],
+                provider: { sort: "throughput" },
+                include_reasoning: true,
+              });
+              console.log(completion);
+              if (completion.error || completion.choices === undefined)
+                message = "Произошла ошибка. Попробуйте задать вопрос ещё раз.";
+              else message = completion.choices[0].message.content;
+              response = message
+                .replaceAll("**", "")
+                .replaceAll("*", "")
+                .replaceAll(/  +/g, " ");
+            }
+            if (response.length > 4096) {
+              let res = [];
+              while (response.length) {
+                res.push(response.substring(0, 4096));
+                response = response.substring(4096);
+              }
+              for (const r of res) {
+                await bot.sendMessage(chatId, r, {
+                  reply_to_message_id: msg.message_id,
+                });
+              }
+              await bot.editMessageText(
+                "_Если вам понравился этот ответ, вы можете сохранить его в Избранное._",
+                {
+                  chat_id: chatId,
+                  message_id: (await prompt).message_id,
+                  parse_mode: "Markdown",
+                },
+              );
+              isAiActive = false;
+            } else {
+              await bot.sendMessage(chatId, response, {
+                reply_to_message_id: msg.message_id,
+              });
+              await bot.editMessageText(
+                "_Если вам понравился этот ответ, вы можете сохранить его в Избранное._",
+                {
+                  chat_id: chatId,
+                  message_id: (await prompt).message_id,
+                  parse_mode: "Markdown",
+                },
+              );
+              isAiActive = false;
+            }
+            return menu("post", chatId);
+          });
+        }
+      }
       break;
     }
     case "poster": {
@@ -293,30 +335,34 @@ bot.on("callback_query", (callback) => {
             return false;
           }
           case "poster_pdf": {
-            let wait = bot.sendMessage(chatId, "Пожалуйста, подождите...")
-            await bot.deleteMessage(chatId, format.message.message_id);
+            await bot.editMessageText("Пожалуйста, подождите...", {
+              chat_id: chatId,
+              message_id: format.message.message_id,
+            });
             await bot.sendDocument(chatId, "./assets/Принципы ФГОС.pdf");
             await bot.sendDocument(chatId, "./assets/Качества выпускника.pdf");
-            await bot.deleteMessage(chatId, (await wait).message_id);
-            await bot.sendMessage(
-              chatId,
+            await bot.editMessageText(
               "_Вы можете поделиться плакатами с другими людьми, а также сохранить их на своё устройство или в Избранное._",
               {
+                chat_id: chatId,
+                message_id: format.message.message_id,
                 parse_mode: "Markdown",
               },
             );
             return menu("post", chatId);
           }
           case "poster_png": {
-            let wait = bot.sendMessage(chatId, "Пожалуйста, подождите...")
-            await bot.deleteMessage(chatId, format.message.message_id);
+            await bot.editMessageText("Пожалуйста, подождите...", {
+              chat_id: chatId,
+              message_id: format.message.message_id,
+            });
             await bot.sendDocument(chatId, "./assets/Принципы ФГОС.png");
             await bot.sendDocument(chatId, "./assets/Качества выпускника.png");
-            await bot.deleteMessage(chatId, (await wait).message_id);
-            await bot.sendMessage(
-              chatId,
+            await bot.editMessageText(
               "_Вы можете поделиться плакатами с другими людьми, а также сохранить их на своё устройство или в Избранное._",
               {
+                chat_id: chatId,
+                message_id: format.message.message_id,
                 parse_mode: "Markdown",
               },
             );
