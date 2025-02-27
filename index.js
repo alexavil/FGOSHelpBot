@@ -235,7 +235,7 @@ bot.on("callback_query", (callback) => {
                   message_id: (await prompt).message_id,
                 },
               );
-              let system = await fs.readFile("system_prompt.txt");
+              let system = await fs.readFile("./assets/system_prompt.txt");
               const completion = await openai.chat.completions.create({
                 models: [
                   "google/gemini-2.0-flash-thinking-exp:free",
