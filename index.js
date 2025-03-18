@@ -1,5 +1,11 @@
 require("dotenv/config");
 
+const Sentry = require("@sentry/node");
+
+Sentry.init({
+  dsn: "https://c0f3b8ffd401c00337f393c79c80a6f6@o4506205891985408.ingest.us.sentry.io/4509000116797440",
+});
+
 const TelegramBot = require("node-telegram-bot-api");
 const OpenAI = require("openai");
 
@@ -253,8 +259,10 @@ bot.on("callback_query", (callback) => {
                 include_reasoning: true,
               });
               console.log(completion);
-              if (completion.error || completion.choices === undefined)
+              if (completion.error || completion.choices === undefined) {
+                Sentry.captureException(completion.error);
                 message = "Произошла ошибка. Попробуйте задать вопрос ещё раз.";
+              }
               else message = completion.choices[0].message.content;
               response = message
                 .replaceAll("**", "")
@@ -374,14 +382,17 @@ bot.on("callback_query", (callback) => {
   }
 });
 
+bot.on("polling_error", (err) => {
+  Sentry.captureException(err);
+  console.log(err);
+});
+
 process.on("unhandledRejection", (error) => {
+  Sentry.captureException(error);
   console.log("Error: " + error.message);
 });
 
 process.on("uncaughtException", (error) => {
+  Sentry.captureException(error);
   console.log("Error: " + error.message);
-});
-
-bot.on("polling_error", (err) => {
-  console.log(err);
 });
