@@ -4,6 +4,7 @@ const Sentry = require("@sentry/node");
 
 Sentry.init({
   dsn: "https://c0f3b8ffd401c00337f393c79c80a6f6@o4506205891985408.ingest.us.sentry.io/4509000116797440",
+  tracesSampleRate: 1.0,
 });
 
 const TelegramBot = require("node-telegram-bot-api");
@@ -223,6 +224,7 @@ bot.on("callback_query", (callback) => {
             },
           );
           bot.once("message", async (msg) => {
+            let perf = Sentry.startInactiveSpan({ op: "transaction", name: "AI Performance" });
             if (msg.text === "/start") return false;
             let faq = db.prepare("SELECT * FROM faq").all();
             let response = undefined;
@@ -245,7 +247,7 @@ bot.on("callback_query", (callback) => {
               const completion = await openai.chat.completions.create({
                 models: [
                   "google/gemini-2.0-flash-thinking-exp:free",
-                  "google/gemini-2.0-pro-exp-02-05:free",
+                  "google/gemini-2.5-pro-exp-03-25:free",
                   "deepseek/deepseek-r1:free",
                 ],
                 messages: [
@@ -289,6 +291,7 @@ bot.on("callback_query", (callback) => {
                 },
               );
               isAiActive = false;
+              perf.end();
             } else {
               await bot.sendMessage(chatId, response, {
                 reply_to_message_id: msg.message_id,
