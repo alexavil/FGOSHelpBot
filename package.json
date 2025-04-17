@@ -9,15 +9,15 @@
   "license": "MIT",
   "description": "",
   "dependencies": {
-    "@sentry/node": "^9.6.0",
-    "@sentry/profiling-node": "^9.6.0",
-    "better-sqlite3": "^11.8.1",
-    "dotenv": "^16.4.7",
+    "@sentry/node": "^9.13.0",
+    "@sentry/profiling-node": "^9.13.0",
+    "better-sqlite3": "^11.9.1",
+    "dotenv": "^16.5.0",
     "fs-extra": "^11.3.0",
     "node-telegram-bot-api": "^0.66.0",
-    "openai": "^4.83.0"
+    "openai": "^4.95.0"
   },
   "devDependencies": {
-    "prettier": "^3.4.2"
+    "prettier": "^3.5.3"
   }
 }
