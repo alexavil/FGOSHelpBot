@@ -38,70 +38,46 @@ db.prepare(
 let isAiActive = false;
 
 let menu = function (mode, chatId, callbackId) {
+  let text = `Добро пожаловать!\nДанный бот создан для методического сопровождения учителей в процессе реализации федеральных государственных образовательных стандартов (ФГОС) в России.\n\nПожалуйста, выберите действие:`;
+  let keyboard = [
+    [
+      {
+        text: "Узнать информацию о ФГОС",
+        callback_data: "faq",
+      },
+    ],
+    [
+      {
+        text: "Задать вопрос",
+        callback_data: "ai",
+      },
+    ],
+    [
+      {
+        text: "Получить плакаты",
+        callback_data: "poster",
+      },
+    ],
+  ];
   switch (mode) {
     default: {
       return false;
     }
     case "post": {
-      return bot.sendMessage(
-        chatId,
-        `Добро пожаловать!\nДанный бот создан для методического сопровождения учителей в процессе реализации федеральных государственных образовательных стандартов (ФГОС) в России.\n\nПожалуйста, выберите действие:`,
-        {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "Узнать информацию о ФГОС",
-                  callback_data: "faq",
-                },
-              ],
-              [
-                {
-                  text: "Задать вопрос",
-                  callback_data: "ai",
-                },
-              ],
-              [
-                {
-                  text: "Получить плакаты",
-                  callback_data: "poster",
-                },
-              ],
-            ],
-          },
+      return bot.sendMessage(chatId, text, {
+        reply_markup: {
+          inline_keyboard: keyboard,
         },
-      );
+      });
     }
     case "edit": {
-      return bot.editMessageText(
-        `Добро пожаловать!\nДанный бот создан для методического сопровождения учителей в процессе реализации федеральных государственных образовательных стандартов (ФГОС) в России.\n\nПожалуйста, выберите действие:`,
-        {
-          chat_id: chatId,
-          message_id: callbackId,
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "Узнать информацию о ФГОС",
-                  callback_data: "faq",
-                },
-              ],
-              [
-                {
-                  text: "Задать вопрос",
-                  callback_data: "ai",
-                },
-              ],
-              [
-                {
-                  text: "Получить плакаты",
-                  callback_data: "poster",
-                },
-              ],
-            ],
-          },
+      return bot.editMessageText(text, {
+        chat_id: chatId,
+        message_id: callbackId,
+        reply_markup: {
+          inline_keyboard: keyboard,
         },
-      );
+      });
     }
   }
 };
@@ -224,7 +200,10 @@ bot.on("callback_query", (callback) => {
             },
           );
           bot.once("message", async (msg) => {
-            let perf = Sentry.startInactiveSpan({ op: "transaction", name: "AI Performance" });
+            let perf = Sentry.startInactiveSpan({
+              op: "transaction",
+              name: "AI Performance",
+            });
             if (msg.text === "/start") return false;
             let faq = db.prepare("SELECT * FROM faq").all();
             let response = undefined;
@@ -264,8 +243,7 @@ bot.on("callback_query", (callback) => {
               if (completion.error || completion.choices === undefined) {
                 Sentry.captureException(completion.error);
                 message = "Произошла ошибка. Попробуйте задать вопрос ещё раз.";
-              }
-              else message = completion.choices[0].message.content;
+              } else message = completion.choices[0].message.content;
               response = message
                 .replaceAll("**", "")
                 .replaceAll("*", "")
