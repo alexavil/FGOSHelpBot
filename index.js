@@ -235,12 +235,10 @@ bot.on("callback_query", (callback) => {
                 provider: { sort: "throughput" },
                 include_reasoning: true,
               });
-              console.log(completion);
               if (completion.error || completion.choices === undefined) {
                 Sentry.captureException(completion.error);
                 message = "Произошла ошибка. Попробуйте задать вопрос ещё раз.";
               } else message = completion.choices[0].message.content;
-              console.log(message);
               response = message
                 .replaceAll("**", "")
                 .replaceAll("*", "")
