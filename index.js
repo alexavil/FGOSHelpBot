@@ -222,13 +222,9 @@ bot.on("callback_query", (callback) => {
                   message_id: (await prompt).message_id,
                 },
               );
-              let system = await fs.readFile("./assets/system_prompt.txt");
+              let system = await fs.readFile(process.env.SYSTEM_PROMPT_PATH);
               const completion = await openai.chat.completions.create({
-                models: [
-                  "google/gemini-2.0-flash-thinking-exp:free",
-                  "google/gemini-2.5-pro-exp-03-25:free",
-                  "deepseek/deepseek-r1:free",
-                ],
+                models: process.env.MODELS.split(","),
                 messages: [
                   {
                     role: "system",
@@ -244,6 +240,7 @@ bot.on("callback_query", (callback) => {
                 Sentry.captureException(completion.error);
                 message = "Произошла ошибка. Попробуйте задать вопрос ещё раз.";
               } else message = completion.choices[0].message.content;
+              console.log(message);
               response = message
                 .replaceAll("**", "")
                 .replaceAll("*", "")
